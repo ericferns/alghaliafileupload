@@ -8,7 +8,7 @@ app = Flask(__name__)
 # Load credentials from environment variables
 ACCOUNT_NAME = "alstorage001"
 CONTAINER_NAME = "abc"
-SAS_TOKEN = "sp=racw&st=2025-08-12T12:41:04Z&se=2025-08-18T20:56:04Z&spr=https&sv=2024-11-04&sr=c&sig=EGLk2wwpzlwmsqqYl1zmZiiJON6Jv8wd2zQKg5RwkSc%3D"
+SAS_TOKEN = f"sp=racw&st=2025-08-21T18:33:38Z&se=2025-09-05T02:48:38Z&spr=https&sv=2024-11-04&sr=c&sig=1gPknht9pqZvmGFuIeU0eBgTb%2F9DI2KxKftEiC%2FRLtU%3D"
 
 # Bootstrap HTML template
 HTML_FORM = '''
