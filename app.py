@@ -5,12 +5,12 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Load credentials from environment variables
+# Azure storage details
 ACCOUNT_NAME = "alstorage001"
 CONTAINER_NAME = "abc"
 SAS_TOKEN = f"sp=racw&st=2025-08-21T18:33:38Z&se=2025-09-05T02:48:38Z&spr=https&sv=2024-11-04&sr=c&sig=1gPknht9pqZvmGFuIeU0eBgTb%2F9DI2KxKftEiC%2FRLtU%3D"
 
-# Bootstrap HTML template
+# HTML Template
 HTML_FORM = '''
 <!doctype html>
 <html lang="en">
@@ -21,7 +21,7 @@ HTML_FORM = '''
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f8f9fa; }
-        .upload-card { max-width: 600px; margin: auto; margin-top: 50px; }
+        .upload-card { max-width: 650px; margin: auto; margin-top: 50px; }
     </style>
 </head>
 <body>
@@ -30,9 +30,10 @@ HTML_FORM = '''
     <div class="card-body">
         <h3 class="card-title text-center mb-4">📤 Upload Excel to Azure</h3>
         <form method="post" enctype="multipart/form-data">
+            
             <div class="mb-3">
                 <label class="form-label">Type of Excel</label>
-                <select class="form-select" name="file_type" required onchange="toggleDateInputs(this.value)">
+                <select class="form-select" name="file_type" required onchange="toggleInputs(this.value)">
                     <option value="">-- Select --</option>
                     <option value="yearly">Yearly Excel</option>
                     <option value="monthly">Monthly Budget Excel</option>
@@ -55,9 +56,19 @@ HTML_FORM = '''
                 <input type="date" class="form-control" name="date">
             </div>
 
+            <div class="mb-3" id="bank_input" style="display:none;">
+                <label class="form-label">Bank Name</label>
+                <select class="form-select" name="bank_name">
+                    <option value="">-- Select Bank --</option>
+                    <option value="bankAlraj">Bank Alraj</option>
+                    <option value="bankRiyad">Bank Riyad</option>
+                    <option value="bankSabb">Bank Sabb</option>
+                </select>
+            </div>
+
             <div class="mb-3">
                 <label class="form-label">Upload File</label>
-                <input type="file" class="form-control" name="file" accept=".xlsx" required>
+                <input type="file" class="form-control" name="file" accept=".xls,.xlsx" required>
             </div>
 
             <div class="d-grid">
@@ -68,9 +79,10 @@ HTML_FORM = '''
 </div>
 
 <script>
-function toggleDateInputs(fileType) {
+function toggleInputs(fileType) {
     document.getElementById("year_input").style.display = fileType === "yearly" ? "block" : "none";
     document.getElementById("date_input").style.display = (fileType === "monthly" || fileType === "bankstatement") ? "block" : "none";
+    document.getElementById("bank_input").style.display = fileType === "bankstatement" ? "block" : "none";
 }
 </script>
 
@@ -82,28 +94,36 @@ function toggleDateInputs(fileType) {
 def upload_file():
     if request.method == 'POST':
         file_type = request.form['file_type']
-        outlet = request.form['outlet'].replace(" ", "_")  # no spaces in filename
+        outlet = request.form['outlet'].replace(" ", "_")  # sanitize outlet
         year = request.form.get('year')
         date_str = request.form.get('date')
         uploaded_file = request.files['file']
 
-        if not uploaded_file.filename.endswith('.xlsx'):
-            return "❌ Only .xlsx files are allowed."
+        if not uploaded_file.filename.lower().endswith(('.xls', '.xlsx')):
+            return "❌ Only .xls and .xlsx files are allowed."
+
 
         timestamp = datetime.now().strftime("%H%M%S")
-
-        # Determine folder and filename
+        ext = os.path.splitext(uploaded_file.filename)[1].lower()
+        # Decide folder + filename
         if file_type == "yearly":
             folder = "yearly"
-            filename = f"yearly_{year}_{outlet}_{timestamp}.xlsx"
+            filename = f"yearly_{year}_{outlet}_{timestamp}{ext}"
+
         elif file_type == "monthly":
             folder = "monthly"
             yyyymmdd = datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y%m%d")
-            filename = f"monthly_{yyyymmdd}_{outlet}_{timestamp}.xlsx"
+            filename = f"monthly_{yyyymmdd}_{outlet}_{timestamp}{ext}"
+
         elif file_type == "bankstatement":
-            folder = "bankstatements"
+            bank_name = request.form.get('bank_name')
+            if not bank_name:
+                return "❌ Please select a bank."
+
+            folder = f"bankstatements/{bank_name}"
             yyyymmdd = datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y%m%d")
-            filename = f"bankstatement_{yyyymmdd}_{outlet}_{timestamp}.xlsx"
+            filename = f"bankstatement_{yyyymmdd}_{outlet}_{timestamp}{ext}"
+
         else:
             return "❌ Invalid file type."
 
