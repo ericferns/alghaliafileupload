@@ -2,6 +2,8 @@ from flask import Flask, request, render_template_string
 from azure.storage.blob import BlobServiceClient
 import os
 from datetime import datetime
+import threading
+import requests
 
 app = Flask(__name__)
 
@@ -9,6 +11,15 @@ app = Flask(__name__)
 ACCOUNT_NAME = "alstorage001"
 CONTAINER_NAME = "abc"
 SAS_TOKEN = f"sp=racw&st=2025-08-21T18:33:38Z&se=2025-09-05T02:48:38Z&spr=https&sv=2024-11-04&sr=c&sig=1gPknht9pqZvmGFuIeU0eBgTb%2F9DI2KxKftEiC%2FRLtU%3D"
+
+# Databricks details (replace with real values)
+DATABRICKS_HOST = "https://adb-883987850066658.18.azuredatabricks.net"
+DATABRICKS_TOKEN = "dapibd27e4c4bc44cf43a5a97766aa6a38cd"
+DATABRICKS_JOB_ID = "482067438862696"
+
+# Global debounce timer
+debounce_timer = None
+DEBOUNCE_DELAY = 300  # 5 minutes in seconds
 
 # HTML Template
 HTML_FORM = '''
@@ -88,7 +99,34 @@ function toggleInputs(fileType) {
 
 </body>
 </html>
-'''
+''' # keeping your full HTML form unchanged
+
+
+def trigger_databricks_job():
+    """Calls the Databricks job via REST API."""
+    url = f"{DATABRICKS_HOST}/api/2.1/jobs/run-now"
+    headers = {"Authorization": f"Bearer {DATABRICKS_TOKEN}"}
+    payload = {"job_id": DATABRICKS_JOB_ID}
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload)
+        if resp.status_code == 200:
+            print("🚀 Databricks job triggered successfully.")
+        else:
+            print(f"⚠️ Failed to trigger job: {resp.text}")
+    except Exception as e:
+        print(f"❌ Error triggering Databricks job: {e}")
+
+
+def schedule_databricks_job():
+    """Debounces job execution with resettable timer."""
+    global debounce_timer
+    if debounce_timer and debounce_timer.is_alive():
+        debounce_timer.cancel()  # reset countdown
+    debounce_timer = threading.Timer(DEBOUNCE_DELAY, trigger_databricks_job)
+    debounce_timer.start()
+    print("⏳ Databricks job scheduled in 5 minutes (reset if another upload comes).")
+
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
@@ -102,9 +140,9 @@ def upload_file():
         if not uploaded_file.filename.lower().endswith(('.xls', '.xlsx')):
             return "❌ Only .xls and .xlsx files are allowed."
 
-
         timestamp = datetime.now().strftime("%H%M%S")
         ext = os.path.splitext(uploaded_file.filename)[1].lower()
+
         # Decide folder + filename
         if file_type == "yearly":
             folder = "yearly"
@@ -119,11 +157,9 @@ def upload_file():
             bank_name = request.form.get('bank_name')
             if not bank_name:
                 return "❌ Please select a bank."
-
             folder = f"bankstatements/{bank_name}"
             yyyymmdd = datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y%m%d")
             filename = f"bankstatement_{yyyymmdd}_{outlet}_{timestamp}{ext}"
-
         else:
             return "❌ Invalid file type."
 
@@ -131,12 +167,19 @@ def upload_file():
         blob_service_client = BlobServiceClient(
             f"https://{ACCOUNT_NAME}.blob.core.windows.net?{SAS_TOKEN}"
         )
-        blob_client = blob_service_client.get_blob_client(container=CONTAINER_NAME, blob=f"{folder}/{filename}")
+        blob_client = blob_service_client.get_blob_client(
+            container=CONTAINER_NAME,
+            blob=f"{folder}/{filename}"
+        )
         blob_client.upload_blob(uploaded_file.read(), overwrite=True)
 
-        return f"<h4 class='text-success text-center mt-5'>✅ File uploaded to '{folder}/{filename}' successfully.</h4>"
+        # Schedule Databricks job after debounce
+        schedule_databricks_job()
+
+        return f"<h4 class='text-success text-center mt-5'>✅ File uploaded to '{folder}/{filename}' successfully.<br>⏳ Databricks job will trigger in 5 min if no more uploads.</h4>"
 
     return render_template_string(HTML_FORM)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
