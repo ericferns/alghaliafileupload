@@ -1,4 +1,6 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 from azure.storage.blob import BlobServiceClient
 import os
 from datetime import datetime
@@ -7,10 +9,14 @@ import requests
 
 app = Flask(__name__)
 
+key_vault_url = "https://alghalia-kv.vault.azure.net/"
+credential = DefaultAzureCredential()
+secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
+
 # Azure storage details
-ACCOUNT_NAME = "alstorage001"
+ACCOUNT_NAME = secret_client.get_secret("storage-account-name").value
+SAS_TOKEN = secret_client.get_secret("storage-account-sas-key").value
 CONTAINER_NAME = "abc"
-SAS_TOKEN = f"sp=racw&st=2025-08-21T18:33:38Z&se=2025-09-05T02:48:38Z&spr=https&sv=2024-11-04&sr=c&sig=1gPknht9pqZvmGFuIeU0eBgTb%2F9DI2KxKftEiC%2FRLtU%3D"
 
 # Databricks details (replace with real values)
 DATABRICKS_HOST = "https://adb-883987850066658.18.azuredatabricks.net"
@@ -22,85 +28,6 @@ debounce_timer = None
 DEBOUNCE_DELAY = 300  # 5 minutes in seconds
 
 # HTML Template
-HTML_FORM = '''
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Excel Uploader</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f8f9fa; }
-        .upload-card { max-width: 650px; margin: auto; margin-top: 50px; }
-    </style>
-</head>
-<body>
-
-<div class="card shadow upload-card">
-    <div class="card-body">
-        <h3 class="card-title text-center mb-4">📤 Upload Excel to Azure</h3>
-        <form method="post" enctype="multipart/form-data">
-            
-            <div class="mb-3">
-                <label class="form-label">Type of Excel</label>
-                <select class="form-select" name="file_type" required onchange="toggleInputs(this.value)">
-                    <option value="">-- Select --</option>
-                    <option value="yearly">Yearly Excel</option>
-                    <option value="monthly">Monthly Budget Excel</option>
-                    <option value="bankstatement">Bank Statement Excel</option>
-                </select>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Outlet</label>
-                <input type="text" class="form-control" name="outlet" placeholder="Outlet name" required>
-            </div>
-
-            <div class="mb-3" id="year_input" style="display:none;">
-                <label class="form-label">Year</label>
-                <input type="number" class="form-control" name="year" min="2000" max="2100">
-            </div>
-
-            <div class="mb-3" id="date_input" style="display:none;">
-                <label class="form-label">Date</label>
-                <input type="date" class="form-control" name="date">
-            </div>
-
-            <div class="mb-3" id="bank_input" style="display:none;">
-                <label class="form-label">Bank Name</label>
-                <select class="form-select" name="bank_name">
-                    <option value="">-- Select Bank --</option>
-                    <option value="bankAlraj">Bank Alraj</option>
-                    <option value="bankRiyad">Bank Riyad</option>
-                    <option value="bankSabb">Bank Sabb</option>
-                </select>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Upload File</label>
-                <input type="file" class="form-control" name="file" accept=".xls,.xlsx" required>
-            </div>
-
-            <div class="d-grid">
-                <button type="submit" class="btn btn-primary">Upload</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<script>
-function toggleInputs(fileType) {
-    document.getElementById("year_input").style.display = fileType === "yearly" ? "block" : "none";
-    document.getElementById("date_input").style.display = (fileType === "monthly" || fileType === "bankstatement") ? "block" : "none";
-    document.getElementById("bank_input").style.display = fileType === "bankstatement" ? "block" : "none";
-}
-</script>
-
-</body>
-</html>
-''' # keeping your full HTML form unchanged
-
 
 def trigger_databricks_job():
     """Calls the Databricks job via REST API."""
@@ -178,7 +105,7 @@ def upload_file():
 
         return f"<h4 class='text-success text-center mt-5'>✅ File uploaded to '{folder}/{filename}' successfully.<br>⏳ Databricks job will trigger in 5 min if no more uploads.</h4>"
 
-    return render_template_string(HTML_FORM)
+    return render_template("upload.html")
 
 
 if __name__ == '__main__':
