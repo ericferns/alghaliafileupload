@@ -19,9 +19,9 @@ SAS_TOKEN = secret_client.get_secret("storage-account-sas-key").value
 CONTAINER_NAME = "abc"
 
 # Databricks details (replace with real values)
-DATABRICKS_HOST = "https://adb-883987850066658.18.azuredatabricks.net"
-DATABRICKS_TOKEN = "dapibd27e4c4bc44cf43a5a97766aa6a38cd"
-DATABRICKS_JOB_ID = "482067438862696"
+DATABRICKS_HOST = secret_client.get_secret("databricks-workspace-host").value
+DATABRICKS_TOKEN = secret_client.get_secret("databricks-workspace-token").value
+DATABRICKS_JOB_ID = secret_client.get_secret("databricks-cashflow-job-id").value
 
 # Global debounce timer
 debounce_timer = None
